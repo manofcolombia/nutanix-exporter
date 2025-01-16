@@ -20,6 +20,7 @@ The Nutanix Exporter is a Go application that fetches live data from any number 
 - Hashicorp Vault server with KVv2 Secrets Engine enabled
   - Secrets Engine name: defined in `VAULT_ENGINE_NAME` environment variable
   - Secret name: defined in `PE_TASK_ACCOUNT` and `PC_TASK_ACCOUNT` environment variables
+  - Namespace: Optional, but can be defined in `VAULT_NAMESPACE` environment variable
   - Fields: username, secret
 - Nutanix Prism Central 2023.4 or later
 
@@ -115,7 +116,7 @@ services:
 
 - [Go](https://golang.org/) - Programming language
 - [Go Prometheus Client](https://github.com/prometheus/client_golang) - Prometheus client library for Go
-- [Go Hashicorp Vault Client](github.com/hashicorp/vault-client-go) - Hashicorp Vault client library for Go
+- [Go Hashicorp Vault Client](https://github.com/hashicorp/vault-client-go) - Hashicorp Vault client library for Go
 - [Docker](https://www.docker.com/) - Containerization
 - [GitHub Actions](https://docs.github.com/en/actions) - CI/CD pipeline
 
