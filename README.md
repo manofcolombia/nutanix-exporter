@@ -102,7 +102,7 @@ services:
     restart: unless-stopped
     volumes:
       - /path/to/your/configs/cluster.yaml:configs/cluster.yaml:z
-      - /path/to/your/configs/storagecontainer.yaml:configs/storagecontainer.yaml:z
+      - /path/to/your/configs/storage_container.yaml:configs/storage_container.yaml:z
       - /path/to/your/configs/host.yaml:configs/host.yaml:z
       - /path/to/your/configs/vm.yaml:configs/vm.yaml:z
     env_file:
