@@ -166,7 +166,7 @@ func FetchClusters(prismClient *nutanix.Cluster, version string) (map[string]str
 				continue
 			}
 			network, networkOk := clusterMap["network"].(map[string]interface{})["externalAddress"].(map[string]interface{})
-			if !networkOk {
+			if !networkOk || network["ipv4"] == nil {
 				continue
 			}
 			ip, ipOk := network["ipv4"].(map[string]interface{})["value"].(string)
