@@ -61,6 +61,12 @@ func (e *Exporter) valueToFloat64(value interface{}) float64 {
 	switch v := value.(type) {
 	case float64:
 		return v
+	case bool:
+		if v == true {
+			return 1.0
+		} else {
+			return 0.0
+		}
 	case string:
 		if v == "on" {
 			return 1.0
