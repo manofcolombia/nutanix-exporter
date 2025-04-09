@@ -49,7 +49,7 @@ func Init() {
 	// Get environment variables
 	PCClusterName := getEnvOrFatal("PC_CLUSTER_NAME")
 	PCClusterURL := getEnvOrFatal("PC_CLUSTER_URL")
-	PCApiVersion := os.Getenv("PC_API_VERSION") // Optional, defaults to v3
+	PCApiVersion := os.Getenv("PC_API_VERSION") // Optional, defaults to v4
 	if PCApiVersion == "" {
 		PCApiVersion = "v4"
 	}
@@ -134,9 +134,14 @@ func FetchClusters(prismClient *nutanix.Cluster, version string) (map[string]str
 
 	// Define the functions for making requests and parsing for both v3 and v4.
 
+	// v4b1 request function
+	makeV4b1Request := func() (*http.Response, error) {
+		return prismClient.API.MakeRequest(ctx, "GET", "/api/clustermgmt/v4.0.b1/config/clusters")
+	}
+
 	// v4 request function
 	makeV4Request := func() (*http.Response, error) {
-		return prismClient.API.MakeRequest(ctx, "GET", "/api/clustermgmt/v4.0.b1/config/clusters")
+		return prismClient.API.MakeRequest(ctx, "GET", "/api/clustermgmt/v4.0/config/clusters")
 	}
 
 	// v3 request function
@@ -181,6 +186,9 @@ func FetchClusters(prismClient *nutanix.Cluster, version string) (map[string]str
 		}
 		return clusters, nil
 	}
+
+	// v4b1 parsing function
+	parseV4b1Clusters := parseV4Clusters
 
 	// v3 parsing function
 	parseV3Clusters := func(result map[string]interface{}) ([]map[string]string, error) {
@@ -229,6 +237,9 @@ func FetchClusters(prismClient *nutanix.Cluster, version string) (map[string]str
 	if version == "v3" {
 		resp, err = makeV3Request()
 		parseClusters = parseV3Clusters
+	} else if version == "v4b1" {
+		resp, err = makeV4b1Request()
+		parseClusters = parseV4b1Clusters
 	} else {
 		resp, err = makeV4Request()
 		parseClusters = parseV4Clusters
