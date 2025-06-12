@@ -22,7 +22,9 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ingka-group/nutanix-exporter/internal/auth"
@@ -42,6 +44,7 @@ var (
 	PCApiVersion  string
 	VaultClient   *auth.VaultClient
 	ClustersMap   map[string]*nutanix.Cluster
+	clustersMu    sync.RWMutex // Protects ClustersMap
 )
 
 func Init() {
@@ -55,10 +58,42 @@ func Init() {
 	}
 	ClusterPrefix = os.Getenv("CLUSTER_PREFIX") // Optional
 
+	clusterRefreshIntervalStr := os.Getenv("CLUSTER_REFRESH_INTERVAL")
+	clusterRefreshInterval := 0
+	if clusterRefreshIntervalStr != "" {
+		if v, err := strconv.Atoi(clusterRefreshIntervalStr); err == nil && v > 0 {
+			clusterRefreshInterval = v
+		}
+	}
+
+	vaultRefreshIntervalStr := os.Getenv("VAULT_REFRESH_INTERVAL")
+	vaultRefreshInterval := 0
+	if vaultRefreshIntervalStr != "" {
+		if v, err := strconv.Atoi(vaultRefreshIntervalStr); err == nil && v > 0 {
+			vaultRefreshInterval = v
+		}
+	}
+
 	log.Printf("Initializing Vault client")
 	vaultClient, err := auth.NewVaultClient()
 	if err != nil {
 		log.Fatalf("Failed to create Vault client: %v", err)
+	}
+
+	// Periodic refresh of vault client
+	if vaultRefreshInterval > 0 {
+		go func() {
+			ticker := time.NewTicker(time.Duration(vaultRefreshInterval) * time.Second)
+			defer ticker.Stop()
+
+			for range ticker.C {
+				log.Printf("Refreshing Vault client...")
+				vaultClient, err = auth.NewVaultClient()
+				if err != nil {
+					log.Fatalf("Failed to refresh Vault client: %v", err)
+				}
+			}
+		}()
 	}
 
 	log.Printf("Connecting to Prism Central")
@@ -67,20 +102,51 @@ func Init() {
 		log.Fatalf("Failed to connect to Prism Central cluster")
 	}
 
+	// Initial setup of cluster list
 	log.Printf("Initializing clusters")
 	clusterMap, err := SetupClusters(PCCluster, vaultClient, PCApiVersion)
 	if err != nil {
 		log.Fatalf("Failed to initialize clusters: %v", err)
 	}
+	clustersMu.Lock()
+	ClustersMap = clusterMap
+	clustersMu.Unlock()
+
+	// Periodic refresh of clusters
+	if clusterRefreshInterval > 0 {
+		go func() {
+			ticker := time.NewTicker(time.Duration(clusterRefreshInterval) * time.Second)
+			defer ticker.Stop()
+			for range ticker.C { // Every time the ticker ticks, i.e. every refreshInterval secs, exec code below
+				log.Printf("Refreshing cluster list...")
+				newMap, err := SetupClusters(PCCluster, vaultClient, PCApiVersion)
+				if err != nil {
+					log.Printf("Cluster refresh failed: %v", err)
+					continue // wait for next tick and try again
+				}
+				clustersMu.Lock()
+				ClustersMap = newMap
+				clustersMu.Unlock()
+				log.Printf("Cluster list refreshed")
+			}
+		}()
+	}
 
 	log.Printf("Initializing HTTP server")
 	http.HandleFunc("/", indexHandler)
 
-	for name, cluster := range clusterMap {
-		route := fmt.Sprintf("/metrics/%s", name)
-		http.HandleFunc(route, createClusterMetricsHandler(cluster, vaultClient))
-		log.Printf("Registered metrics endpoint for cluster %s at %s", name, route)
-	}
+	// Dynamically create metrics-serving handler for incoming http request
+	http.HandleFunc("/metrics/", func(w http.ResponseWriter, r *http.Request) {
+		name := strings.TrimPrefix(r.URL.Path, "/metrics/")
+		clustersMu.RLock()
+		cluster, ok := ClustersMap[name]
+		clustersMu.RUnlock()
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		createClusterMetricsHandler(cluster, vaultClient)(w, r) // produce handler function for the incoming http request and execute it immediately
+	})
 
 	log.Printf("Starting Server on %s", ListenAddress)
 	if err := http.ListenAndServe(ListenAddress, nil); err != nil {
@@ -127,7 +193,7 @@ func SetupClusters(prismClient *nutanix.Cluster, vaultClient *auth.VaultClient, 
 // FetchClusters fetches the name and IP of all Prism Element clusters registered in Prism Central.
 // Takes a version flag to switch between v3 and v4 API calls. Skips clusters that don't match the prefix if provided.
 func FetchClusters(prismClient *nutanix.Cluster, version string) (map[string]string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
 	clusterData := make(map[string]string)
