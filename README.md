@@ -2,13 +2,14 @@
 
 ## About
 
-The Nutanix Exporter is a Go application that fetches live data from any number of Prism Element servers and presents it in a format ingestable by Prometheus. It runs as a docker container, automatically fetching all PE clusters from a Prism Central instance and exporting metrics from multiple APIv2 endpoints (VMs, Hosts, Clusters, etc.).
+The Nutanix Exporter is a Go application that fetches live data from any number of Prism Element servers and presents it in a format ingestible by Prometheus. It runs as a docker container, automatically fetching all PE clusters from a Prism Central instance and exporting metrics from multiple APIv2 endpoints (VMs, Hosts, Clusters, etc.).
 
 ## Features
 
 - YAML config files define which metrics to collect
 - Hashicorp Vault support for fetching cluster credentials
 - Refreshes credentials from Vault on 4xx errors
+- Support for reading cluster credentials from environment variables
 - Parent Exporter class that can be extended for any APIv2 endpoint
 - Per cluster metrics exposed at `/metrics/cluster-name`
 - Optional filtering by cluster name prefix
@@ -17,12 +18,18 @@ The Nutanix Exporter is a Go application that fetches live data from any number 
 
 ### Prerequisites
 
-- Hashicorp Vault server with KVv2 Secrets Engine enabled
+- Nutanix Prism Central 2023.4 or later
+- When using HashiCorp Vault: A Vault server with KVv2 Secrets Engine enabled
   - Secrets Engine name: defined in `VAULT_ENGINE_NAME` environment variable
   - Secret name: defined in `PE_TASK_ACCOUNT` and `PC_TASK_ACCOUNT` environment variables
   - Namespace: Optional, but can be defined in `VAULT_NAMESPACE` environment variable
   - Fields: username, secret
-- Nutanix Prism Central 2023.4 or later
+- When using environment variables for providing the credentials:
+  - The `VAULT_ADDR` environment variable must not be defined
+  - `PC_USERNAME` and `PC_PASSWORD` environment variables must be defined with Prism Central credentials
+  - For each cluster the `PE_USERNAME_<CLUSTERNAME>` and `PE_PASSWORD_<CLUSTERNAME>` environment variables have to be defined with Prism Element credentials
+  - The cluster specific environment variable names can only contain letters A-Z, numbers 0-9 and underscores (_).
+    Lower case letters should be converted to upper case and all other characters to underscores.
 
 ### Metrics Configuration
 
@@ -78,20 +85,28 @@ To build and run in a container:
 Example exporter.env:
 
 ```yaml
+### Common options
+PC_CLUSTER_NAME=your-pc-cluster-name
+PC_CLUSTER_URL=https://your-pc-cluster.yourdomain.com:9440
+PC_API_VERSION=v3 (Optional, defaults to v4. Supports v3, v4b1, v4)
+CLUSTER_REFRESH_INTERVAL=1800 (Seconds. Optional, defaults to 0, i.e. no refreshing)
+CLUSTER_PREFIX=optional-cluster-prefix to filter cluster names
+
+### For HashiCorp Vault only
 VAULT_ADDR=https://your-vault-server.yourdomain.com
 VAULT_NAMESPACE=production
 VAULT_ENGINE_NAME=NutanixKV2
 VAULT_ROLE_ID=12345678-1234-5678-1234-567812345678
 VAULT_SECRET_ID=12345678-1234-5678-1234-567812345678
-PC_CLUSTER_NAME=your-pc-cluster-name
-PC_CLUSTER_URL=https://your-pc-cluster.yourdomain.com:9440
+VAULT_REFRESH_INTERVAL=1500 (Seconds. Optional, defaults to 0, i.e. no refreshing)
 PE_TASK_ACCOUNT=PETaskAccount
 PC_TASK_ACCOUNT=PCTaskAccount
-CLUSTER_REFRESH_INTERVAL=1800 (Seconds. Optional, defaults to 0, i.e. no refreshing)
-VAULT_REFRESH_INTERVAL=1500 (Seconds. Optional, defaults to 0, i.e. no refreshing)
-CLUSTER_PREFIX=optional-cluster-prefix to filter cluster names
-PC_API_VERSION=v3 (Optional, defaults to v4. Supports v3, v4b1, v4)
 
+### For environment variable credential provider only
+PE_USERNAME_<CLUSTERNAME_ONE>=cluster1-user-name
+PE_PASSWORD_<CLUSTERNAME_ONE>=cluster1-user-password
+PE_USERNAME_<CLUSTERNAME_TWO_>=cluster2-user-name
+PE_PASSWORD_<CLUSTERNAME_TWO>=cluster2-user-password
 ```
 
 ## Deployment
